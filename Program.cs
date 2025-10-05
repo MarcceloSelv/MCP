@@ -22,32 +22,91 @@ public class SqlValidatorMcpServer
             var line = await Console.In.ReadLineAsync();
             if (line == null) break;
             
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            
             try
             {
                 var request = JsonSerializer.Deserialize<JsonNode>(line);
-                var response = HandleRequest(request);
+                if (request == null)
+                {
+                    await WriteError(null, -32700, "Parse error");
+                    continue;
+                }
+                
+                // Check if this is a notification (no id field)
+                var hasId = request["id"] != null;
+                
+                if (!hasId)
+                {
+                    // This is a notification - process but don't respond
+                    await Console.Error.WriteLineAsync($"Received notification: {request["method"]?.GetValue<string>()}");
+                    continue;
+                }
+                
+                // Extract ID from request (can be string or number)
+                var requestId = ExtractId(request);
+                
+                var response = HandleRequest(request, requestId);
                 await Console.Out.WriteLineAsync(JsonSerializer.Serialize(response));
+            }
+            catch (JsonException)
+            {
+                await WriteError(null, -32700, "Parse error: Invalid JSON");
             }
             catch (Exception ex)
             {
                 await Console.Error.WriteLineAsync($"Error: {ex.Message}");
-                var error = new
-                {
-                    jsonrpc = "2.0",
-                    id = (string?)null,
-                    error = new { code = -32603, message = ex.Message }
-                };
-                await Console.Out.WriteLineAsync(JsonSerializer.Serialize(error));
             }
         }
     }
 
-    private object HandleRequest(JsonNode? request)
+    private object? ExtractId(JsonNode request)
     {
-        if (request == null) throw new Exception("Invalid request");
+        var idNode = request["id"];
+        if (idNode == null) return null;
         
+        // Try to get as number first, then as string
+        try
+        {
+            return idNode.GetValue<int>();
+        }
+        catch
+        {
+            try
+            {
+                return idNode.GetValue<string>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    private async Task WriteError(object? id, int code, string message)
+    {
+        var error = new
+        {
+            jsonrpc = "2.0",
+            id,
+            error = new { code, message }
+        };
+        await Console.Out.WriteLineAsync(JsonSerializer.Serialize(error));
+    }
+
+    private object HandleRequest(JsonNode request, object? id)
+    {
         var method = request["method"]?.GetValue<string>();
-        var id = request["id"]?.GetValue<string>();
+        
+        if (string.IsNullOrEmpty(method))
+        {
+            return new
+            {
+                jsonrpc = "2.0",
+                id,
+                error = new { code = -32600, message = "Invalid Request: method is required" }
+            };
+        }
 
         return method switch
         {
@@ -63,7 +122,7 @@ public class SqlValidatorMcpServer
         };
     }
 
-    private object HandleInitialize(string? id)
+    private object HandleInitialize(object? id)
     {
         return new
         {
@@ -85,7 +144,7 @@ public class SqlValidatorMcpServer
         };
     }
 
-    private object HandleToolsList(string? id)
+    private object HandleToolsList(object? id)
     {
         return new
         {
@@ -150,27 +209,64 @@ public class SqlValidatorMcpServer
         };
     }
 
-    private object HandleToolCall(JsonNode request, string? id)
+    private object HandleToolCall(JsonNode request, object? id)
     {
-        var toolName = request["params"]?["name"]?.GetValue<string>();
-        var arguments = request["params"]?["arguments"];
-
-        if (arguments == null)
+        try
         {
-            throw new Exception("Missing arguments");
+            var paramsNode = request["params"];
+            if (paramsNode == null)
+            {
+                return new
+                {
+                    jsonrpc = "2.0",
+                    id,
+                    error = new { code = -32602, message = "Invalid params: params object is required" }
+                };
+            }
+
+            var toolName = paramsNode["name"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(toolName))
+            {
+                return new
+                {
+                    jsonrpc = "2.0",
+                    id,
+                    error = new { code = -32602, message = "Invalid params: name is required" }
+                };
+            }
+
+            var arguments = paramsNode["arguments"];
+            if (arguments == null)
+            {
+                return new
+                {
+                    jsonrpc = "2.0",
+                    id,
+                    error = new { code = -32602, message = "Invalid params: arguments is required" }
+                };
+            }
+
+            return toolName switch
+            {
+                "validate_sql" => HandleValidateSql(arguments, id),
+                "parse_sql" => HandleParseSql(arguments, id),
+                _ => new
+                {
+                    jsonrpc = "2.0",
+                    id,
+                    error = new { code = -32602, message = $"Unknown tool: {toolName}" }
+                }
+            };
         }
-
-        return toolName switch
+        catch (Exception ex)
         {
-            "validate_sql" => HandleValidateSql(arguments, id),
-            "parse_sql" => HandleParseSql(arguments, id),
-            _ => new
+            return new
             {
                 jsonrpc = "2.0",
                 id,
-                error = new { code = -32602, message = $"Unknown tool: {toolName}" }
-            }
-        };
+                error = new { code = -32603, message = $"Internal error: {ex.Message}" }
+            };
+        }
     }
 
     private TSqlParser GetParser(string? sqlVersion)
@@ -191,111 +287,145 @@ public class SqlValidatorMcpServer
         };
     }
 
-    private object HandleValidateSql(JsonNode arguments, string? id)
+    private object HandleValidateSql(JsonNode arguments, object? id)
     {
-        var query = arguments["query"]?.GetValue<string>();
-        if (string.IsNullOrEmpty(query))
+        try
         {
-            throw new Exception("Query is required");
-        }
-
-        var sqlVersion = arguments["sqlVersion"]?.GetValue<string>();
-        var parser = GetParser(sqlVersion);
-
-        using var reader = new StringReader(query);
-        var fragment = parser.Parse(reader, out var errors);
-
-        var versionName = GetVersionName(sqlVersion ?? "160");
-
-        var result = new
-        {
-            valid = errors.Count == 0,
-            errorCount = errors.Count,
-            sqlVersion = sqlVersion ?? "160",
-            sqlVersionName = versionName,
-            errors = errors.Select(e => new
+            var query = arguments["query"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(query))
             {
-                line = e.Line,
-                column = e.Column,
-                message = e.Message,
-                number = e.Number,
-                offset = e.Offset
-            }).ToArray(),
-            summary = errors.Count == 0 
-                ? $"✓ SQL syntax is valid (validated against {versionName})" 
-                : $"✗ Found {errors.Count} syntax error(s) (validated against {versionName})"
-        };
-
-        return new
-        {
-            jsonrpc = "2.0",
-            id,
-            result = new
-            {
-                content = new[]
+                return new
                 {
-                    new
+                    jsonrpc = "2.0",
+                    id,
+                    error = new { code = -32602, message = "Invalid params: query is required" }
+                };
+            }
+
+            var sqlVersion = arguments["sqlVersion"]?.GetValue<string>();
+            var parser = GetParser(sqlVersion);
+
+            using var reader = new StringReader(query);
+            var fragment = parser.Parse(reader, out var errors);
+
+            var versionName = GetVersionName(sqlVersion ?? "160");
+
+            var result = new
+            {
+                valid = errors.Count == 0,
+                errorCount = errors.Count,
+                sqlVersion = sqlVersion ?? "160",
+                sqlVersionName = versionName,
+                errors = errors.Select(e => new
+                {
+                    line = e.Line,
+                    column = e.Column,
+                    message = e.Message,
+                    number = e.Number,
+                    offset = e.Offset
+                }).ToArray(),
+                summary = errors.Count == 0 
+                    ? $"✓ SQL syntax is valid (validated against {versionName})" 
+                    : $"✗ Found {errors.Count} syntax error(s) (validated against {versionName})"
+            };
+
+            return new
+            {
+                jsonrpc = "2.0",
+                id,
+                result = new
+                {
+                    content = new[]
                     {
-                        type = "text",
-                        text = JsonSerializer.Serialize(result, new JsonSerializerOptions 
-                        { 
-                            WriteIndented = true 
-                        })
+                        new
+                        {
+                            type = "text",
+                            text = JsonSerializer.Serialize(result, new JsonSerializerOptions 
+                            { 
+                                WriteIndented = true 
+                            })
+                        }
                     }
                 }
-            }
-        };
+            };
+        }
+        catch (Exception ex)
+        {
+            return new
+            {
+                jsonrpc = "2.0",
+                id,
+                error = new { code = -32603, message = $"Internal error: {ex.Message}" }
+            };
+        }
     }
 
-    private object HandleParseSql(JsonNode arguments, string? id)
+    private object HandleParseSql(JsonNode arguments, object? id)
     {
-        var query = arguments["query"]?.GetValue<string>();
-        if (string.IsNullOrEmpty(query))
+        try
         {
-            throw new Exception("Query is required");
-        }
-
-        var sqlVersion = arguments["sqlVersion"]?.GetValue<string>();
-        var parser = GetParser(sqlVersion);
-
-        using var reader = new StringReader(query);
-        var fragment = parser.Parse(reader, out var errors);
-
-        var result = new
-        {
-            valid = errors.Count == 0,
-            sqlVersion = sqlVersion ?? "160",
-            sqlVersionName = GetVersionName(sqlVersion ?? "160"),
-            fragmentType = fragment?.GetType().Name,
-            scriptTokenStream = fragment?.ScriptTokenStream?.Count ?? 0,
-            errors = errors.Select(e => new
+            var query = arguments["query"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(query))
             {
-                line = e.Line,
-                column = e.Column,
-                message = e.Message
-            }).ToArray(),
-            astInfo = fragment != null ? GetAstInfo(fragment) : "Parse failed"
-        };
-
-        return new
-        {
-            jsonrpc = "2.0",
-            id,
-            result = new
-            {
-                content = new[]
+                return new
                 {
-                    new
+                    jsonrpc = "2.0",
+                    id,
+                    error = new { code = -32602, message = "Invalid params: query is required" }
+                };
+            }
+
+            var sqlVersion = arguments["sqlVersion"]?.GetValue<string>();
+            var parser = GetParser(sqlVersion);
+
+            using var reader = new StringReader(query);
+            var fragment = parser.Parse(reader, out var errors);
+
+            var result = new
+            {
+                valid = errors.Count == 0,
+                sqlVersion = sqlVersion ?? "160",
+                sqlVersionName = GetVersionName(sqlVersion ?? "160"),
+                fragmentType = fragment?.GetType().Name,
+                scriptTokenStream = fragment?.ScriptTokenStream?.Count ?? 0,
+                errors = errors.Select(e => new
+                {
+                    line = e.Line,
+                    column = e.Column,
+                    message = e.Message
+                }).ToArray(),
+                astInfo = fragment != null ? GetAstInfo(fragment) : "Parse failed"
+            };
+
+            return new
+            {
+                jsonrpc = "2.0",
+                id,
+                result = new
+                {
+                    content = new[]
                     {
-                        type = "text",
-                        text = JsonSerializer.Serialize(result, new JsonSerializerOptions 
-                        { 
-                            WriteIndented = true 
-                        })
+                        new
+                        {
+                            type = "text",
+                            text = JsonSerializer.Serialize(result, new JsonSerializerOptions 
+                            { 
+                                WriteIndented = true 
+                            })
+                        }
                     }
                 }
-            }
-        };
+            };
+        }
+        catch (Exception ex)
+        {
+            return new
+            {
+                jsonrpc = "2.0",
+                id,
+                error = new { code = -32603, message = $"Internal error: {ex.Message}" }
+            };
+        }
     }
 
     private string GetAstInfo(TSqlFragment fragment)
