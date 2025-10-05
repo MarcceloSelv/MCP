@@ -1,0 +1,11 @@
+# Arquivo de configuração exemplo para Claude Desktop
+# Copie este conteúdo para: %APPDATA%\Claude\claude_desktop_config.json
+
+{
+  "mcpServers": {
+    "sql-validator": {
+      "command": "dotnet",
+      "args": ["C:\\Users\\Marccelo\\source\\repos\\SqlValidatorMcp\\publish\\SqlValidatorMcp.dll"]
+    }
+  }
+}
