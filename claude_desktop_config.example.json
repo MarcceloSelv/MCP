@@ -5,7 +5,11 @@
   "mcpServers": {
     "sql-validator": {
       "command": "dotnet",
-      "args": ["C:\\Users\\Marccelo\\source\\repos\\SqlValidatorMcp\\publish\\SqlValidatorMcp.dll"]
+      "args": [
+        "C:\\Users\\Marccelo\\source\\repos\\SqlValidatorMcp\\publish\\SqlValidatorMcp.dll",
+        "--databases={\"production\":\"Server=prod-server;Database=MyDB;User Id=user;Password=pass;\",\"staging\":\"Server=staging-server;Database=MyDB;User Id=user;Password=pass;\",\"development\":\"Server=localhost;Database=MyDB;Integrated Security=true;\"}",
+        "--default-database=development"
+      ]
     }
   }
 }

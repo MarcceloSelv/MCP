@@ -6,7 +6,8 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        var server = new SqlValidatorMcpServer();
+        var config = SqlConnectionConfig.LoadFromArgs(args);
+        var server = new SqlValidatorMcpServer(config);
         await server.RunAsync();
 
         //// MCP Server que faz proxy para API no Kubernetes
@@ -17,8 +18,15 @@ class Program
 
 public class SqlValidatorMcpServer
 {
-    private readonly SqlFormatterService _formatterService = new();
     private readonly SqlDocumentationService _documentationService = new();
+    private readonly SqlExecutionService _executionService;
+    private readonly SqlConnectionConfig _config;
+
+    public SqlValidatorMcpServer(SqlConnectionConfig config)
+    {
+        _config = config;
+        _executionService = new SqlExecutionService(config);
+    }
 
     public async Task RunAsync()
     {
@@ -118,13 +126,16 @@ public class SqlValidatorMcpServer
 
     private object HandleToolsList(object? id)
     {
+        var availableDatabases = string.Join(", ", _config.GetAvailableDatabases());
+        var defaultDatabase = _config.DefaultDatabase ?? "not configured";
+
         return new
         {
             jsonrpc = "2.0",
             id,
             result = new
             {
-                tools = new[]
+                tools = new object[]
                 {
                     new
                     {
@@ -170,27 +181,6 @@ public class SqlValidatorMcpServer
                     },
                     new
                     {
-                        name = "format_sql",
-                        description = "Formats and beautifies SQL code with proper indentation and structure",
-                        inputSchema = new
-                        {
-                            type = "object",
-                            properties = new
-                            {
-                                query = new { type = "string", description = "The SQL query to format" },
-                                sqlVersion = new
-                                {
-                                    type = "string",
-                                    description = "SQL Server version (default: 160 for SQL Server 2022)",
-                                    @enum = new[] { "90", "100", "110", "120", "130", "140", "150", "160" },
-                                    @default = "160"
-                                }
-                            },
-                            required = new[] { "query" }
-                        }
-                    },
-                    new
-                    {
                         name = "document_sql",
                         description = "Generates comprehensive Markdown documentation for SQL scripts including tables, functions, complexity analysis and recommendations",
                         inputSchema = new
@@ -208,6 +198,35 @@ public class SqlValidatorMcpServer
                                 }
                             },
                             required = new[] { "query" }
+                        }
+                    },
+                    new
+                    {
+                        name = "execute_sql",
+                        description = "Executes SQL queries against configured databases. Only SELECT, INSERT, and other safe read/create commands are allowed. DROP, DELETE, UPDATE, TRUNCATE, and ALTER commands are blocked for safety.",
+                        inputSchema = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                query = new { type = "string", description = "The SQL query to execute" },
+                                database = new
+                                {
+                                    type = "string",
+                                    description = $"Database name to use (default: {defaultDatabase}). Available databases: {availableDatabases}"
+                                }
+                            },
+                            required = new[] { "query" }
+                        }
+                    },
+                    new
+                    {
+                        name = "list_databases",
+                        description = "Lists all configured databases and shows which one is the default",
+                        inputSchema = new
+                        {
+                            type = "object",
+                            properties = new { }
                         }
                     }
                 }
@@ -241,8 +260,9 @@ public class SqlValidatorMcpServer
             {
                 "validate_sql" => HandleValidateSql(arguments, id),
                 "parse_sql" => HandleParseSql(arguments, id),
-                "format_sql" => HandleFormatSql(arguments, id),
                 "document_sql" => HandleDocumentSql(arguments, id),
+                "execute_sql" => HandleExecuteSql(arguments, id),
+                "list_databases" => HandleListDatabases(id),
                 _ => new { jsonrpc = "2.0", id, error = new { code = -32602, message = $"Unknown tool: {toolName}" } }
             };
         }
@@ -385,42 +405,6 @@ public class SqlValidatorMcpServer
         }
     }
 
-    private object HandleFormatSql(JsonNode arguments, object? id)
-    {
-        try
-        {
-            var query = arguments["query"]?.GetValue<string>();
-            if (string.IsNullOrEmpty(query))
-            {
-                return new { jsonrpc = "2.0", id, error = new { code = -32602, message = "Invalid params: query is required" } };
-            }
-
-            var sqlVersion = arguments["sqlVersion"]?.GetValue<string>();
-            var result = _formatterService.FormatSql(query, sqlVersion ?? "160");
-
-            return new
-            {
-                jsonrpc = "2.0",
-                id,
-                result = new
-                {
-                    content = new[]
-                    {
-                        new
-                        {
-                            type = "text",
-                            text = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true })
-                        }
-                    }
-                }
-            };
-        }
-        catch (Exception ex)
-        {
-            return new { jsonrpc = "2.0", id, error = new { code = -32603, message = $"Internal error: {ex.Message}" } };
-        }
-    }
-
     private object HandleDocumentSql(JsonNode arguments, object? id)
     {
         try
@@ -478,6 +462,139 @@ public class SqlValidatorMcpServer
             "160" => "SQL Server 2022",
             _ => "SQL Server 2022"
         };
+    }
+
+    private object HandleExecuteSql(JsonNode arguments, object? id)
+    {
+        try
+        {
+            var query = arguments["query"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(query))
+            {
+                return new { jsonrpc = "2.0", id, error = new { code = -32602, message = "Invalid params: query is required" } };
+            }
+
+            var database = arguments["database"]?.GetValue<string>();
+            var result = _executionService.ExecuteQuery(query, database);
+
+            // Formata o resultado
+            var resultText = FormatExecutionResult(result);
+
+            return new
+            {
+                jsonrpc = "2.0",
+                id,
+                result = new
+                {
+                    content = new[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = resultText
+                        }
+                    }
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            return new { jsonrpc = "2.0", id, error = new { code = -32603, message = $"Internal error: {ex.Message}" } };
+        }
+    }
+
+    private object HandleListDatabases(object? id)
+    {
+        try
+        {
+            var databases = _config.GetAvailableDatabases();
+            var defaultDb = _config.DefaultDatabase;
+
+            var result = new
+            {
+                success = true,
+                defaultDatabase = defaultDb,
+                availableDatabases = databases,
+                summary = $"Default database: {defaultDb ?? "not set"}\nAvailable databases: {string.Join(", ", databases)}"
+            };
+
+            return new
+            {
+                jsonrpc = "2.0",
+                id,
+                result = new
+                {
+                    content = new[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true })
+                        }
+                    }
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            return new { jsonrpc = "2.0", id, error = new { code = -32603, message = $"Internal error: {ex.Message}" } };
+        }
+    }
+
+    private string FormatExecutionResult(SqlExecutionResult result)
+    {
+        if (!result.Success)
+        {
+            var errorJson = new
+            {
+                success = false,
+                errorMessage = result.ErrorMessage,
+                blockedCommands = result.BlockedCommands.Count > 0 ? result.BlockedCommands : null,
+                sqlErrorNumber = result.SqlErrorNumber,
+                sqlErrorLineNumber = result.SqlErrorLineNumber
+            };
+            return JsonSerializer.Serialize(errorJson, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        // Sucesso - formata os resultados
+        var output = new System.Text.StringBuilder();
+        output.AppendLine($"✓ Query executed successfully on database: {result.DatabaseUsed}");
+        output.AppendLine($"Rows returned: {result.RowsAffected}");
+        output.AppendLine();
+
+        if (result.ResultTables.Count == 0)
+        {
+            output.AppendLine("No result sets returned.");
+        }
+        else
+        {
+            for (int tableIndex = 0; tableIndex < result.ResultTables.Count; tableIndex++)
+            {
+                var table = result.ResultTables[tableIndex];
+
+                if (result.ResultTables.Count > 1)
+                {
+                    output.AppendLine($"--- Result Set {tableIndex + 1} ---");
+                }
+
+                // Formata como tabela Markdown
+                if (table.Columns.Count > 0)
+                {
+                    output.AppendLine("| " + string.Join(" | ", table.Columns) + " |");
+                    output.AppendLine("| " + string.Join(" | ", table.Columns.Select(_ => "---")) + " |");
+
+                    foreach (var row in table.Rows)
+                    {
+                        var formattedRow = row.Select(cell => cell?.ToString() ?? "NULL");
+                        output.AppendLine("| " + string.Join(" | ", formattedRow) + " |");
+                    }
+                }
+
+                output.AppendLine();
+            }
+        }
+
+        return output.ToString();
     }
 }
 

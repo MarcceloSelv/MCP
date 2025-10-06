@@ -1,15 +1,16 @@
-# SQL Validator MCP Server v2.0
+# SQL Validator MCP Server v3.0
 
-MCP Server para validação, formatação e documentação de T-SQL usando o parser oficial da Microsoft.
+MCP Server para validação, execução e documentação de T-SQL usando o parser oficial da Microsoft.
 
 ## 🌟 Características
 
 - ✅ **Validação de sintaxe** T-SQL (SQL Server 2005-2022)
-- 🎨 **Formatação/Beautifier** de código SQL
+- 🚀 **Execução segura de queries** em múltiplos bancos de dados
 - 📚 **Geração automática de documentação** em Markdown
 - 📊 Análise detalhada de erros (linha, coluna, mensagem)
 - 🌳 Parsing de AST (Abstract Syntax Tree)
 - 🔧 Compatível com múltiplas versões do SQL Server
+- 🔒 **Segurança**: Bloqueia comandos destrutivos (DROP, DELETE, UPDATE, etc.)
 
 ## 📦 Instalação
 
@@ -24,19 +25,28 @@ dotnet publish -c Release -o ./publish
 
 Adicione ao arquivo `claude_desktop_config.json`:
 
-**Windows:**
+**Windows (Com múltiplos bancos de dados):**
 ```json
 {
   "mcpServers": {
     "sql-validator": {
       "command": "dotnet",
-      "args": ["C:\\Users\\Marccelo\\source\\repos\\SqlValidatorMcp\\publish\\SqlValidatorMcp.dll"]
+      "args": [
+        "C:\\Users\\Marccelo\\source\\repos\\SqlValidatorMcp\\publish\\SqlValidatorMcp.dll",
+        "--databases={\"production\":\"Server=prod-server;Database=MyDB;User Id=user;Password=pass;\",\"staging\":\"Server=staging-server;Database=MyDB;User Id=user;Password=pass;\",\"development\":\"Server=localhost;Database=MyDB;Integrated Security=true;\"}",
+        "--default-database=development"
+      ]
     }
   }
 }
 ```
 
 **Localização:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+### Parâmetros de Configuração
+
+- `--databases=<json>`: JSON com mapeamento de nome → connection string
+- `--default-database=<nome>`: Nome do banco padrão (opcional, usa o primeiro se não especificado)
 
 ## 🛠️ Ferramentas Disponíveis
 
@@ -83,86 +93,66 @@ Faz o parsing da query e retorna informações sobre a estrutura AST.
 
 ---
 
-### 3. format_sql ✨ NOVO
-Formata e embeleza código SQL com indentação e estrutura adequadas.
-
-**Parâmetros:**
-- `query` (string, obrigatório): A query SQL para formatar
-- `sqlVersion` (string, opcional): Versão do SQL Server
-
-**Exemplo de entrada:**
-```sql
-SELECT*FROM Users WHERE id=1AND active=1
-```
-
-**Resposta:**
-```json
-{
-  "success": true,
-  "formattedSql": "SELECT *\nFROM Users\nWHERE id = 1\n    AND active = 1",
-  "stats": {
-    "originalLines": 1,
-    "formattedLines": 4,
-    "originalLength": 44,
-    "formattedLength": 52
-  }
-}
-```
-
----
-
-### 4. document_sql ✨ NOVO
+### 3. document_sql
 Gera documentação Markdown completa para scripts SQL.
 
 **Parâmetros:**
 - `query` (string, obrigatório): O script SQL para documentar
 - `sqlVersion` (string, opcional): Versão do SQL Server
 
-**Exemplo de entrada:**
+---
+
+### 4. execute_sql ✨ NOVO
+Executa queries SQL em bancos de dados configurados com **validação de segurança**.
+
+**Parâmetros:**
+- `query` (string, obrigatório): A query SQL para executar
+- `database` (string, opcional): Nome do banco de dados (usa o padrão se não especificado)
+
+**Comandos Permitidos:**
+- ✅ SELECT
+- ✅ INSERT
+- ✅ CREATE (tabelas, índices, etc.)
+
+**Comandos Bloqueados:**
+- ❌ DROP
+- ❌ DELETE
+- ❌ UPDATE
+- ❌ TRUNCATE
+- ❌ ALTER TABLE
+- ❌ ALTER DATABASE
+
+**Exemplo:**
 ```sql
-CREATE PROCEDURE GetActiveUsers
-    @MinAge INT = 18
-AS
-BEGIN
-    SELECT u.Name, u.Email, o.OrderCount
-    FROM Users u
-    LEFT JOIN (
-        SELECT UserId, COUNT(*) as OrderCount
-        FROM Orders
-        GROUP BY UserId
-    ) o ON u.Id = o.UserId
-    WHERE u.Active = 1 AND u.Age >= @MinAge
-END
+SELECT TOP 10 CustomerID, CompanyName, ContactName
+FROM Customers
+ORDER BY CustomerID
 ```
 
-**Resposta Markdown gerada:**
-```markdown
-# SQL Script Documentation
+**Resposta:**
+```
+✓ Query executed successfully on database: development
+Rows returned: 10
 
-## 📊 Summary
-- **Total Statements:** 1
-- **Tables Referenced:** 2
-- **Functions Used:** 1
-- **Stored Procedures:** 1
-- **Complexity Score:** 4/10
+| CustomerID | CompanyName | ContactName |
+| --- | --- | --- |
+| 1 | Alfreds Futterkiste | Maria Anders |
+| 2 | Ana Trujillo | Ana Trujillo |
+...
+```
 
-## 📦 Stored Procedures
+---
 
-### `GetActiveUsers`
+### 5. list_databases ✨ NOVO
+Lista todos os bancos de dados configurados.
 
-**Parameters:**
-- `@MinAge` (INT)
-
-**Tables Used:**
-- `Users`
-- `Orders`
-
-## 🔗 Join Analysis
-- **Total Joins:** 1
-- **LEFT JOINs:** 1
-
-## 💡 Recommendations
-- Consider adding indexes on join columns
+**Resposta:**
+```json
+{
+  "success": true,
+  "defaultDatabase": "development",
+  "availableDatabases": ["production", "staging", "development"]
+}
 ```
 
 ## 🎯 Comandos SQL Suportados
@@ -184,10 +174,15 @@ Claude, valide esta query:
 SELECT * FROM Users WHERE Name LIKE '%test%'
 ```
 
-### Formatar SQL
+### Executar Query
 ```
-Claude, formate este SQL:
-SELECT id,name,email FROM users WHERE active=1 AND age>18
+Claude, execute esta query no banco de development:
+SELECT TOP 10 * FROM Customers ORDER BY CustomerID
+```
+
+### Listar Bancos Disponíveis
+```
+Claude, liste os bancos de dados disponíveis
 ```
 
 ### Documentar Stored Procedure
@@ -218,6 +213,19 @@ cd C:\Users\Marccelo\source\repos\SqlValidatorMcp
 run-tests.bat
 ```
 
+## ✅ Mudanças da Versão Anterior (v2.0 → v3.0)
+
+### Removido
+- ❌ **format_sql**: Ferramenta de formatação SQL removida
+- ❌ **SqlFormatterService**: Serviço de formatação removido
+
+### Adicionado
+- ✅ **execute_sql**: Execução segura de queries SQL
+- ✅ **list_databases**: Listagem de bancos configurados
+- ✅ **SqlConnectionConfig**: Gerenciamento de múltiplas conexões
+- ✅ **SqlExecutionService**: Serviço de execução com validação de segurança
+- ✅ **Validação AST**: Bloqueia comandos perigosos antes da execução
+
 ## 🚀 Próximas Features (Planejadas)
 
 - [ ] Validação semântica com conexão ao banco (SMO)
@@ -226,12 +234,14 @@ run-tests.bat
 - [ ] SQL Security Scanner (detecção de SQL Injection)
 - [ ] Query Optimizer (sugestões de performance)
 - [ ] SQL to LINQ Converter
+- [ ] Transaction support (BEGIN/COMMIT/ROLLBACK)
 - [ ] Migration Script Generator
 
 ## 📖 Bibliotecas Utilizadas
 
-- **Microsoft.SqlServer.TransactSql.ScriptDom** v161.9.119 - Parser oficial T-SQL da Microsoft
-- **System.Text.Json** v8.0.5 - Serialização JSON
+- **Microsoft.SqlServer.TransactSql.ScriptDom** v170.128.0 - Parser oficial T-SQL da Microsoft
+- **Microsoft.Data.SqlClient** v6.1.1 - Cliente SQL Server oficial
+- **System.Text.Json** v9.0.9 - Serialização JSON
 
 ## 🎓 O que o Parser Valida
 
@@ -257,7 +267,7 @@ O MCP Server se comunica via **stdin/stdout** usando protocolo **JSON-RPC 2.0**:
 ```
 Claude Desktop ─stdin─> MCP Server
                        (lê JSON line-by-line)
-                       
+
 Claude Desktop <─stdout─ MCP Server
                        (escreve JSON line-by-line)
 ```
