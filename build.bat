@@ -1,11 +1,11 @@
 @echo off
 echo ========================================
-echo === SQL Validator MCP v2.0 - Build ===
+echo ====  SQL MCP Server v3.0 - Build  ====
 echo ========================================
 echo.
 
 echo [1/4] Restaurando dependencias...
-dotnet restore
+dotnet restore SqlMcpServer.csproj
 if %ERRORLEVEL% NEQ 0 (
     echo ERRO ao restaurar dependencias!
     pause
@@ -14,7 +14,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo [2/4] Compilando projeto...
-dotnet build -c Release
+dotnet build SqlMcpServer.csproj -c Release
 if %ERRORLEVEL% NEQ 0 (
     echo ERRO ao compilar!
     pause
@@ -29,13 +29,22 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo [4/4] Publicando aplicacao...
-dotnet publish -c Release -o .\publish
+echo [4/4] Publicando aplicacao (Windows x64 - Self-contained)...
+dotnet publish SqlMcpServer.csproj -c Release -r win-x64 --self-contained true -o .\publish
 if %ERRORLEVEL% NEQ 0 (
     echo ERRO ao publicar!
     pause
     exit /b 1
 )
+
+echo.
+echo [5/5] Removendo arquivos de localizacao (economia ~3MB)...
+cd publish
+for /d %%d in (cs de es fr it ja ko pl pt-BR ru tr zh-Hans zh-Hant) do (
+    if exist %%d rd /s /q %%d
+)
+cd ..
+echo Pastas de localizacao removidas!
 
 echo.
 echo ========================================
@@ -44,9 +53,16 @@ echo ========================================
 echo.
 echo Aplicacao publicada em: %CD%\publish
 echo.
-echo NOVAS FEATURES v2.0:
-echo   ✨ format_sql    - Formata e embeleza codigo SQL
-echo   ✨ document_sql  - Gera documentacao Markdown
+echo FEATURES v3.0:
+echo   ✅ validate_sql   - Valida sintaxe T-SQL
+echo   ✅ parse_sql      - Analisa estrutura AST
+echo   ✅ document_sql   - Gera documentacao Markdown
+echo   ✨ execute_sql    - Executa queries com seguranca
+echo   ✨ list_databases - Lista bancos configurados
+echo.
+echo SEGURANCA:
+echo   🔒 Bloqueia: DROP, DELETE, UPDATE, TRUNCATE, ALTER
+echo   ✅ Permite: SELECT, INSERT, CREATE
 echo.
 echo Para configurar no Claude Desktop:
 echo.
@@ -55,9 +71,12 @@ echo.
 echo 2. Adicione:
 echo {
 echo   "mcpServers": {
-echo     "sql-validator": {
-echo       "command": "dotnet",
-echo       "args": ["%CD%\\publish\\SqlValidatorMcp.dll"]
+echo     "sql-mcp-server": {
+echo       "command": "%CD%\\publish\\SqlMcpServer.exe",
+echo       "args": [
+echo         "--databases={\"dev\":\"Server=localhost;Database=MyDB;Integrated Security=true;TrustServerCertificate=True\"}",
+echo         "--default-database=dev"
+echo       ]
 echo     }
 echo   }
 echo }

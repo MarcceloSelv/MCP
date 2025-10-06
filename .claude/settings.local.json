@@ -4,7 +4,9 @@
       "Bash(dotnet add package:*)",
       "Bash(dotnet build)",
       "Bash(dotnet clean:*)",
-      "Bash(dotnet build:*)"
+      "Bash(dotnet build:*)",
+      "Bash(dotnet publish:*)",
+      "Bash(./SqlMcpServer.exe --help)"
     ],
     "deny": [],
     "ask": []

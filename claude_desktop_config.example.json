@@ -4,10 +4,9 @@
 {
   "mcpServers": {
     "sql-mcp-server": {
-      "command": "dotnet",
+      "command": "C:\\Users\\Marccelo\\source\\repos\\SQL-Server\\Mcp\\publish\\SqlMcpServer.exe",
       "args": [
-        "C:\\Users\\Marccelo\\source\\repos\\SQL-Server\\Mcp\\publish\\SqlMcpServer.dll",
-        "--databases={\"production\":\"Server=prod-server;Database=MyDB;User Id=user;Password=pass;\",\"staging\":\"Server=staging-server;Database=MyDB;User Id=user;Password=pass;\",\"development\":\"Server=localhost;Database=MyDB;Integrated Security=true;\"}",
+        "--databases={\"production\":\"Server=prod-server;Database=MyDB;User Id=user;Password=pass;TrustServerCertificate=True\",\"staging\":\"Server=staging-server;Database=MyDB;User Id=user;Password=pass;TrustServerCertificate=True\",\"development\":\"Server=localhost;Database=MyDB;Integrated Security=true;TrustServerCertificate=True\"}",
         "--default-database=development"
       ]
     }

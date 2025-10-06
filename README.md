@@ -243,6 +243,17 @@ dotnet run
 - **Microsoft.Data.SqlClient** v6.1.1 - Cliente SQL Server oficial
 - **System.Text.Json** v9.0.9 - Serialização JSON
 
+## 📦 Build e Deployment
+
+### Tamanhos de Distribuição
+
+| Configuração | Tamanho | Observações |
+|-------------|---------|-------------|
+| **Self-contained (Recomendado)** | ~80MB | Não requer .NET instalado |
+| **Framework-dependent** | ~10MB | Requer .NET 8 Runtime instalado |
+
+**Nota sobre Trimming**: Trimming foi desabilitado porque interfere com JSON serialization dinâmica usada pelo MCP protocol. O tamanho adicional (~40MB) é aceitável para garantir compatibilidade total.
+
 ## 🎓 O que o Parser Valida
 
 ### ✅ Valida (Sintaxe)
