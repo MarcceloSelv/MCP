@@ -16,19 +16,7 @@ public class SqlExecutionService
     {
         try
         {
-            // Valida se há comandos bloqueados
-            var validation = ValidateQuery(query);
-            if (!validation.IsValid)
-            {
-                return new SqlExecutionResult
-                {
-                    Success = false,
-                    ErrorMessage = validation.ErrorMessage,
-                    BlockedCommands = validation.BlockedCommands
-                };
-            }
-
-            // Obtém a connection string
+            // Obtém a connection string primeiro
             var connectionString = _config.GetConnectionString(databaseName);
             if (string.IsNullOrEmpty(connectionString))
             {
@@ -38,6 +26,18 @@ public class SqlExecutionService
                     ErrorMessage = databaseName == null
                         ? "No default database configured"
                         : $"Database '{databaseName}' not found. Available databases: {string.Join(", ", _config.GetAvailableDatabases())}"
+                };
+            }
+
+            // Valida query com SQL Server real para mensagens de erro melhores
+            var validation = ValidateQuery(query, connectionString);
+            if (!validation.IsValid)
+            {
+                return new SqlExecutionResult
+                {
+                    Success = false,
+                    ErrorMessage = validation.ErrorMessage,
+                    BlockedCommands = validation.BlockedCommands
                 };
             }
 
@@ -113,22 +113,13 @@ public class SqlExecutionService
         }
     }
 
-    private QueryValidation ValidateQuery(string query)
+    private QueryValidation ValidateQuery(string query, string? connectionString = null)
     {
         var parser = new TSql160Parser(true);
         using var reader = new StringReader(query);
         var fragment = parser.Parse(reader, out var errors);
 
-        if (errors.Count > 0)
-        {
-            return new QueryValidation
-            {
-                IsValid = false,
-                ErrorMessage = $"SQL syntax errors: {string.Join("; ", errors.Select(e => e.Message))}"
-            };
-        }
-
-        // Verifica comandos bloqueados
+        // Primeiro verifica comandos bloqueados (mais rápido e não precisa de DB)
         var visitor = new DangerousCommandVisitor();
         fragment.Accept(visitor);
 
@@ -142,7 +133,57 @@ public class SqlExecutionService
             };
         }
 
+        // Se o parser local encontrou erros, tenta validar no SQL Server para erro mais específico
+        if (errors.Count > 0 && !string.IsNullOrEmpty(connectionString))
+        {
+            var sqlServerError = ValidateWithSqlServer(query, connectionString);
+            if (!string.IsNullOrEmpty(sqlServerError))
+            {
+                return new QueryValidation
+                {
+                    IsValid = false,
+                    ErrorMessage = $"SQL syntax error: {sqlServerError}"
+                };
+            }
+        }
+
+        // Fallback para erro do parser local
+        if (errors.Count > 0)
+        {
+            return new QueryValidation
+            {
+                IsValid = false,
+                ErrorMessage = $"SQL syntax errors: {string.Join("; ", errors.Select(e => $"{e.Message} (Line {e.Line}, Column {e.Column})"))}"
+            };
+        }
+
         return new QueryValidation { IsValid = true };
+    }
+
+    private string? ValidateWithSqlServer(string query, string connectionString)
+    {
+        try
+        {
+            using var connection = new SqlConnection(connectionString);
+            connection.Open();
+
+            // SET PARSEONLY ON faz o SQL Server validar sem executar
+            using var command = new SqlCommand($"SET PARSEONLY ON; {query}; SET PARSEONLY OFF;", connection);
+            command.CommandTimeout = 5; // Validação rápida
+            command.ExecuteNonQuery();
+
+            return null; // Sem erros
+        }
+        catch (SqlException ex)
+        {
+            // Retorna a mensagem de erro real do SQL Server
+            return ex.Message;
+        }
+        catch
+        {
+            // Se falhar por qualquer outro motivo, retorna null para usar erro do parser
+            return null;
+        }
     }
 }
 
