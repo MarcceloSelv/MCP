@@ -1,6 +1,6 @@
-# SQL Validator MCP Server v3.0
+# SQL MCP Server v3.0
 
-MCP Server para validação, execução e documentação de T-SQL usando o parser oficial da Microsoft.
+MCP Server completo para SQL Server: validação, execução segura e documentação de T-SQL usando o parser oficial da Microsoft.
 
 ## 🌟 Características
 
@@ -15,7 +15,7 @@ MCP Server para validação, execução e documentação de T-SQL usando o parse
 ## 📦 Instalação
 
 ```bash
-cd C:\Users\Marccelo\source\repos\SqlValidatorMcp
+cd C:\Users\Marccelo\source\repos\SQL-Server\Mcp
 dotnet restore
 dotnet build
 dotnet publish -c Release -o ./publish
@@ -29,10 +29,10 @@ Adicione ao arquivo `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "sql-validator": {
+    "sql-mcp-server": {
       "command": "dotnet",
       "args": [
-        "C:\\Users\\Marccelo\\source\\repos\\SqlValidatorMcp\\publish\\SqlValidatorMcp.dll",
+        "C:\\Users\\Marccelo\\source\\repos\\SQL-Server\\Mcp\\publish\\SqlMcpServer.dll",
         "--databases={\"production\":\"Server=prod-server;Database=MyDB;User Id=user;Password=pass;\",\"staging\":\"Server=staging-server;Database=MyDB;User Id=user;Password=pass;\",\"development\":\"Server=localhost;Database=MyDB;Integrated Security=true;\"}",
         "--default-database=development"
       ]
@@ -209,8 +209,8 @@ BEGIN UPDATE Users SET Active = @NewStatus WHERE Id = @UserId END
 
 Execute o programa de teste:
 ```bash
-cd C:\Users\Marccelo\source\repos\SqlValidatorMcp
-run-tests.bat
+cd C:\Users\Marccelo\source\repos\SQL-Server\Mcp
+dotnet run
 ```
 
 ## ✅ Mudanças da Versão Anterior (v2.0 → v3.0)

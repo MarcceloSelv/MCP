@@ -7,22 +7,18 @@ class Program
     static async Task Main(string[] args)
     {
         var config = SqlConnectionConfig.LoadFromArgs(args);
-        var server = new SqlValidatorMcpServer(config);
+        var server = new SqlMcpServer(config);
         await server.RunAsync();
-
-        //// MCP Server que faz proxy para API no Kubernetes
-        //var server = new SqlValidatorMcpProxyServer();
-        //await server.RunAsync();
     }
 }
 
-public class SqlValidatorMcpServer
+public class SqlMcpServer
 {
     private readonly SqlDocumentationService _documentationService = new();
     private readonly SqlExecutionService _executionService;
     private readonly SqlConnectionConfig _config;
 
-    public SqlValidatorMcpServer(SqlConnectionConfig config)
+    public SqlMcpServer(SqlConnectionConfig config)
     {
         _config = config;
         _executionService = new SqlExecutionService(config);
@@ -30,7 +26,7 @@ public class SqlValidatorMcpServer
 
     public async Task RunAsync()
     {
-        await Console.Error.WriteLineAsync("SQL Validator MCP Server starting...");
+        await Console.Error.WriteLineAsync("SQL MCP Server starting...");
         
         while (true)
         {
@@ -118,7 +114,7 @@ public class SqlValidatorMcpServer
             result = new
             {
                 protocolVersion = "2024-11-05",
-                serverInfo = new { name = "sql-validator-mcp", version = "2.0.0" },
+                serverInfo = new { name = "sql-mcp-server", version = "3.0.0" },
                 capabilities = new { tools = new { } }
             }
         };
