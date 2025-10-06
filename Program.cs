@@ -199,7 +199,7 @@ public class SqlMcpServer
                     new
                     {
                         name = "execute_sql",
-                        description = "Executes SQL queries against configured databases. Only SELECT, INSERT, and other safe read/create commands are allowed. DROP, DELETE, UPDATE, TRUNCATE, and ALTER commands are blocked for safety.",
+                        description = "Executes SQL queries with automatic syntax validation and security checks. Blocked: DROP, DELETE, UPDATE, TRUNCATE, ALTER. Allowed: SELECT, INSERT, CREATE. ⚡ Validation is automatic - no need to call validate_sql first.",
                         inputSchema = new
                         {
                             type = "object",
