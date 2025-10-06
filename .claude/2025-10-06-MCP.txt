@@ -1,0 +1,29 @@
+
+╭─── Claude Code v2.0.8 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                   │ Tips for getting started                                                                     │
+│               Welcome back Marccelo!              │ Run /init to create a CLAUDE.md file with instructions for Claude                            │
+│                                                   │ ─────────────────────────────────────────────────────────────────                            │
+│                      ▐▛███▜▌                      │ Recent activity                                                                              │
+│                     ▝▜█████▛▘                     │ No recent activity                                                                           │
+│                       ▘▘ ▝▝                       │                                                                                              │
+│                                                   │                                                                                              │
+│              Sonnet 4.5 · Claude Pro              │                                                                                              │
+│   C:\Users\Marccelo\source\repos\SQL-Server\Mcp   │                                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+════════════════════════════════════════════════════ Conversation compacted · ctrl+o for history ═══════════════════════════════════════════════════
+  ⎿  Read SqlExecutionService.cs (256 lines)
+  ⎿  Read publish\test-variations.txt (5 lines)
+  ⎿  Read publish\test-query.txt (3 lines)
+  ⎿  Referenced file Program.cs
+  ⎿  Read TROUBLESHOOTING.md (96 lines)
+
+● I'll reorganize the codebase by creating logical folders and moving files without changing any code.
+
+● Bash(mkdir Services Configuration Models Validators)
+  ⎿  (No content)
+  ⎿  Session limit reached ∙ resets 3am
+     /upgrade to increase your usage limit.
+
+
+
+

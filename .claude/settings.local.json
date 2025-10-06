@@ -6,7 +6,9 @@
       "Bash(dotnet clean:*)",
       "Bash(dotnet build:*)",
       "Bash(dotnet publish:*)",
-      "Bash(./SqlMcpServer.exe --help)"
+      "Bash(./SqlMcpServer.exe --help)",
+      "Bash(git mv:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
