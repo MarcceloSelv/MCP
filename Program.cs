@@ -8,11 +8,18 @@ class Program
     {
         var server = new SqlValidatorMcpServer();
         await server.RunAsync();
+
+        //// MCP Server que faz proxy para API no Kubernetes
+        //var server = new SqlValidatorMcpProxyServer();
+        //await server.RunAsync();
     }
 }
 
 public class SqlValidatorMcpServer
 {
+    private readonly SqlFormatterService _formatterService = new();
+    private readonly SqlDocumentationService _documentationService = new();
+
     public async Task RunAsync()
     {
         await Console.Error.WriteLineAsync("SQL Validator MCP Server starting...");
@@ -33,19 +40,15 @@ public class SqlValidatorMcpServer
                     continue;
                 }
                 
-                // Check if this is a notification (no id field)
                 var hasId = request["id"] != null;
                 
                 if (!hasId)
                 {
-                    // This is a notification - process but don't respond
                     await Console.Error.WriteLineAsync($"Received notification: {request["method"]?.GetValue<string>()}");
                     continue;
                 }
                 
-                // Extract ID from request (can be string or number)
                 var requestId = ExtractId(request);
-                
                 var response = HandleRequest(request, requestId);
                 await Console.Out.WriteLineAsync(JsonSerializer.Serialize(response));
             }
@@ -65,32 +68,13 @@ public class SqlValidatorMcpServer
         var idNode = request["id"];
         if (idNode == null) return null;
         
-        // Try to get as number first, then as string
-        try
-        {
-            return idNode.GetValue<int>();
-        }
-        catch
-        {
-            try
-            {
-                return idNode.GetValue<string>();
-            }
-            catch
-            {
-                return null;
-            }
-        }
+        try { return idNode.GetValue<int>(); }
+        catch { try { return idNode.GetValue<string>(); } catch { return null; } }
     }
 
     private async Task WriteError(object? id, int code, string message)
     {
-        var error = new
-        {
-            jsonrpc = "2.0",
-            id,
-            error = new { code, message }
-        };
+        var error = new { jsonrpc = "2.0", id, error = new { code, message } };
         await Console.Out.WriteLineAsync(JsonSerializer.Serialize(error));
     }
 
@@ -113,12 +97,7 @@ public class SqlValidatorMcpServer
             "initialize" => HandleInitialize(id),
             "tools/list" => HandleToolsList(id),
             "tools/call" => HandleToolCall(request, id),
-            _ => new
-            {
-                jsonrpc = "2.0",
-                id,
-                error = new { code = -32601, message = $"Method not found: {method}" }
-            }
+            _ => new { jsonrpc = "2.0", id, error = new { code = -32601, message = $"Method not found: {method}" } }
         };
     }
 
@@ -131,15 +110,8 @@ public class SqlValidatorMcpServer
             result = new
             {
                 protocolVersion = "2024-11-05",
-                serverInfo = new
-                {
-                    name = "sql-validator-mcp",
-                    version = "1.0.0"
-                },
-                capabilities = new
-                {
-                    tools = new { }
-                }
+                serverInfo = new { name = "sql-validator-mcp", version = "2.0.0" },
+                capabilities = new { tools = new { } }
             }
         };
     }
@@ -163,11 +135,7 @@ public class SqlValidatorMcpServer
                             type = "object",
                             properties = new
                             {
-                                query = new
-                                {
-                                    type = "string",
-                                    description = "The SQL query to validate"
-                                },
+                                query = new { type = "string", description = "The SQL query to validate" },
                                 sqlVersion = new
                                 {
                                     type = "string",
@@ -188,11 +156,49 @@ public class SqlValidatorMcpServer
                             type = "object",
                             properties = new
                             {
-                                query = new
+                                query = new { type = "string", description = "The SQL query to parse" },
+                                sqlVersion = new
                                 {
                                     type = "string",
-                                    description = "The SQL query to parse"
-                                },
+                                    description = "SQL Server version (default: 160 for SQL Server 2022)",
+                                    @enum = new[] { "90", "100", "110", "120", "130", "140", "150", "160" },
+                                    @default = "160"
+                                }
+                            },
+                            required = new[] { "query" }
+                        }
+                    },
+                    new
+                    {
+                        name = "format_sql",
+                        description = "Formats and beautifies SQL code with proper indentation and structure",
+                        inputSchema = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                query = new { type = "string", description = "The SQL query to format" },
+                                sqlVersion = new
+                                {
+                                    type = "string",
+                                    description = "SQL Server version (default: 160 for SQL Server 2022)",
+                                    @enum = new[] { "90", "100", "110", "120", "130", "140", "150", "160" },
+                                    @default = "160"
+                                }
+                            },
+                            required = new[] { "query" }
+                        }
+                    },
+                    new
+                    {
+                        name = "document_sql",
+                        description = "Generates comprehensive Markdown documentation for SQL scripts including tables, functions, complexity analysis and recommendations",
+                        inputSchema = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                query = new { type = "string", description = "The SQL script to document" },
                                 sqlVersion = new
                                 {
                                     type = "string",
@@ -216,56 +222,33 @@ public class SqlValidatorMcpServer
             var paramsNode = request["params"];
             if (paramsNode == null)
             {
-                return new
-                {
-                    jsonrpc = "2.0",
-                    id,
-                    error = new { code = -32602, message = "Invalid params: params object is required" }
-                };
+                return new { jsonrpc = "2.0", id, error = new { code = -32602, message = "Invalid params: params object is required" } };
             }
 
             var toolName = paramsNode["name"]?.GetValue<string>();
             if (string.IsNullOrEmpty(toolName))
             {
-                return new
-                {
-                    jsonrpc = "2.0",
-                    id,
-                    error = new { code = -32602, message = "Invalid params: name is required" }
-                };
+                return new { jsonrpc = "2.0", id, error = new { code = -32602, message = "Invalid params: name is required" } };
             }
 
             var arguments = paramsNode["arguments"];
             if (arguments == null)
             {
-                return new
-                {
-                    jsonrpc = "2.0",
-                    id,
-                    error = new { code = -32602, message = "Invalid params: arguments is required" }
-                };
+                return new { jsonrpc = "2.0", id, error = new { code = -32602, message = "Invalid params: arguments is required" } };
             }
 
             return toolName switch
             {
                 "validate_sql" => HandleValidateSql(arguments, id),
                 "parse_sql" => HandleParseSql(arguments, id),
-                _ => new
-                {
-                    jsonrpc = "2.0",
-                    id,
-                    error = new { code = -32602, message = $"Unknown tool: {toolName}" }
-                }
+                "format_sql" => HandleFormatSql(arguments, id),
+                "document_sql" => HandleDocumentSql(arguments, id),
+                _ => new { jsonrpc = "2.0", id, error = new { code = -32602, message = $"Unknown tool: {toolName}" } }
             };
         }
         catch (Exception ex)
         {
-            return new
-            {
-                jsonrpc = "2.0",
-                id,
-                error = new { code = -32603, message = $"Internal error: {ex.Message}" }
-            };
+            return new { jsonrpc = "2.0", id, error = new { code = -32603, message = $"Internal error: {ex.Message}" } };
         }
     }
 
@@ -283,7 +266,7 @@ public class SqlValidatorMcpServer
             "140" => new TSql140Parser(true),
             "150" => new TSql150Parser(true),
             "160" => new TSql160Parser(true),
-            _ => new TSql160Parser(true) // Default to latest
+            _ => new TSql160Parser(true)
         };
     }
 
@@ -294,12 +277,7 @@ public class SqlValidatorMcpServer
             var query = arguments["query"]?.GetValue<string>();
             if (string.IsNullOrEmpty(query))
             {
-                return new
-                {
-                    jsonrpc = "2.0",
-                    id,
-                    error = new { code = -32602, message = "Invalid params: query is required" }
-                };
+                return new { jsonrpc = "2.0", id, error = new { code = -32602, message = "Invalid params: query is required" } };
             }
 
             var sqlVersion = arguments["sqlVersion"]?.GetValue<string>();
@@ -340,10 +318,7 @@ public class SqlValidatorMcpServer
                         new
                         {
                             type = "text",
-                            text = JsonSerializer.Serialize(result, new JsonSerializerOptions 
-                            { 
-                                WriteIndented = true 
-                            })
+                            text = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true })
                         }
                     }
                 }
@@ -351,12 +326,7 @@ public class SqlValidatorMcpServer
         }
         catch (Exception ex)
         {
-            return new
-            {
-                jsonrpc = "2.0",
-                id,
-                error = new { code = -32603, message = $"Internal error: {ex.Message}" }
-            };
+            return new { jsonrpc = "2.0", id, error = new { code = -32603, message = $"Internal error: {ex.Message}" } };
         }
     }
 
@@ -367,12 +337,7 @@ public class SqlValidatorMcpServer
             var query = arguments["query"]?.GetValue<string>();
             if (string.IsNullOrEmpty(query))
             {
-                return new
-                {
-                    jsonrpc = "2.0",
-                    id,
-                    error = new { code = -32602, message = "Invalid params: query is required" }
-                };
+                return new { jsonrpc = "2.0", id, error = new { code = -32602, message = "Invalid params: query is required" } };
             }
 
             var sqlVersion = arguments["sqlVersion"]?.GetValue<string>();
@@ -408,10 +373,7 @@ public class SqlValidatorMcpServer
                         new
                         {
                             type = "text",
-                            text = JsonSerializer.Serialize(result, new JsonSerializerOptions 
-                            { 
-                                WriteIndented = true 
-                            })
+                            text = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true })
                         }
                     }
                 }
@@ -419,12 +381,79 @@ public class SqlValidatorMcpServer
         }
         catch (Exception ex)
         {
+            return new { jsonrpc = "2.0", id, error = new { code = -32603, message = $"Internal error: {ex.Message}" } };
+        }
+    }
+
+    private object HandleFormatSql(JsonNode arguments, object? id)
+    {
+        try
+        {
+            var query = arguments["query"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(query))
+            {
+                return new { jsonrpc = "2.0", id, error = new { code = -32602, message = "Invalid params: query is required" } };
+            }
+
+            var sqlVersion = arguments["sqlVersion"]?.GetValue<string>();
+            var result = _formatterService.FormatSql(query, sqlVersion ?? "160");
+
             return new
             {
                 jsonrpc = "2.0",
                 id,
-                error = new { code = -32603, message = $"Internal error: {ex.Message}" }
+                result = new
+                {
+                    content = new[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true })
+                        }
+                    }
+                }
             };
+        }
+        catch (Exception ex)
+        {
+            return new { jsonrpc = "2.0", id, error = new { code = -32603, message = $"Internal error: {ex.Message}" } };
+        }
+    }
+
+    private object HandleDocumentSql(JsonNode arguments, object? id)
+    {
+        try
+        {
+            var query = arguments["query"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(query))
+            {
+                return new { jsonrpc = "2.0", id, error = new { code = -32602, message = "Invalid params: query is required" } };
+            }
+
+            var sqlVersion = arguments["sqlVersion"]?.GetValue<string>();
+            var result = _documentationService.GenerateDocumentation(query, sqlVersion ?? "160");
+
+            return new
+            {
+                jsonrpc = "2.0",
+                id,
+                result = new
+                {
+                    content = new[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = result.Success ? result.MarkdownDocumentation : JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true })
+                        }
+                    }
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            return new { jsonrpc = "2.0", id, error = new { code = -32603, message = $"Internal error: {ex.Message}" } };
         }
     }
 
