@@ -46,12 +46,24 @@ public class SqlExecutionService
             connection.Open();
 
             using var command = new SqlCommand(query, connection);
-            command.CommandTimeout = 30; // 30 segundos de timeout
+            command.CommandTimeout = 300; // 300 segundos de timeout (5 minutos)
 
             var result = new SqlExecutionResult
             {
                 Success = true,
                 DatabaseUsed = databaseName ?? _config.DefaultDatabase ?? "unknown"
+            };
+
+            // Lista para capturar mensagens informativas (PRINT, STATISTICS IO, etc)
+            var infoMessages = new List<string>();
+
+            // Handler para capturar mensagens do SQL Server
+            connection.InfoMessage += (sender, e) =>
+            {
+                foreach (SqlError error in e.Errors)
+                {
+                    infoMessages.Add(error.Message);
+                }
             };
 
             using var reader = command.ExecuteReader();
@@ -90,6 +102,7 @@ public class SqlExecutionService
 
             result.ResultTables = tables;
             result.RowsAffected = tables.Sum(t => t.Rows.Count);
+            result.InfoMessages = infoMessages;
 
             return result;
         }
@@ -246,6 +259,7 @@ public class SqlExecutionResult
     public string? DatabaseUsed { get; set; }
     public int RowsAffected { get; set; }
     public List<ResultTable> ResultTables { get; set; } = new();
+    public List<string> InfoMessages { get; set; } = new();
 }
 
 public class ResultTable

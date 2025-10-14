@@ -556,6 +556,18 @@ public class SqlMcpServer
         var output = new System.Text.StringBuilder();
         output.AppendLine($"✓ Query executed successfully on database: {result.DatabaseUsed}");
         output.AppendLine($"Rows returned: {result.RowsAffected}");
+
+        // Exibe mensagens informativas se houver (PRINT, STATISTICS IO, etc)
+        if (result.InfoMessages.Count > 0)
+        {
+            output.AppendLine();
+            output.AppendLine("--- Informational Messages ---");
+            foreach (var message in result.InfoMessages)
+            {
+                output.AppendLine(message);
+            }
+        }
+
         output.AppendLine();
 
         if (result.ResultTables.Count == 0)
