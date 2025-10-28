@@ -1,6 +1,8 @@
-# SQL MCP Server v3.1
+# SQL MCP Server v4.0
 
 MCP Server completo para SQL Server: validação, execução segura e documentação de T-SQL usando o parser oficial da Microsoft.
+
+**Novidade v4.0:** Migrado para usar a biblioteca oficial **ModelContextProtocol** da Microsoft/Anthropic em parceria.
 
 ## 🌟 Características
 

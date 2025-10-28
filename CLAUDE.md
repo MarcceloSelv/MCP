@@ -4,9 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SQL MCP Server v3.1 is a Model Context Protocol (MCP) server that provides SQL Server T-SQL validation, safe execution, and documentation generation capabilities. It uses Microsoft's official T-SQL parser (ScriptDom) and communicates via JSON-RPC 2.0 over stdin/stdout.
+SQL MCP Server v4.0 is a Model Context Protocol (MCP) server that provides SQL Server T-SQL validation, safe execution, and documentation generation capabilities. It uses Microsoft's official T-SQL parser (ScriptDom) and the official **ModelContextProtocol** library from Microsoft/Anthropic.
 
-**Key features in v3.1:**
+**Key features in v4.0:**
+- **Uses official ModelContextProtocol library** (partnership between Microsoft and Anthropic)
+- Attribute-based tool definitions with `[McpServerTool]` and `[McpServerToolType]`
+- Dependency injection with Microsoft.Extensions.Hosting
 - Automatic retry with exponential backoff for transient errors
 - Separate connection and command timeouts
 - Environment variable-based configuration
@@ -43,11 +46,21 @@ dotnet run
 
 ### MCP Communication Layer (Program.cs)
 
-The main entry point implements the JSON-RPC 2.0 protocol:
-- **HandleRequest**: Routes incoming JSON-RPC methods (initialize, tools/list, tools/call)
-- **HandleToolCall**: Dispatches to specific tool handlers (validate_sql, parse_sql, document_sql, execute_sql, list_databases)
-- **Communication**: Line-by-line JSON reading from stdin, writing to stdout
+The main entry point uses the official ModelContextProtocol library with dependency injection:
+- **Host.CreateApplicationBuilder**: Creates the application host
+- **AddMcpServer**: Registers the MCP server with server info
+- **WithStdioServerTransport**: Configures stdin/stdout communication
+- **WithToolsFromAssembly**: Auto-discovers tools marked with `[McpServerTool]`
+- All JSON-RPC 2.0 protocol handling is managed by the library
 - Error logging goes to stderr (doesn't interfere with JSON-RPC communication)
+
+### Tool Definitions (SqlMcpTools.cs)
+
+Tools are defined using attributes:
+- **`[McpServerToolType]`**: Marks the class containing tool methods
+- **`[McpServerTool]`**: Marks individual tool methods
+- **`[Description(...)]`**: Provides descriptions for tools and parameters
+- Dependency injection provides SqlConnectionConfig, SqlExecutionService, SqlDocumentationService
 
 ### Core Services
 
@@ -132,9 +145,11 @@ The codebase extensively uses the Visitor pattern from ScriptDom:
 
 ## Key Dependencies
 
+- **ModelContextProtocol v0.4.0-preview.3**: Official MCP library (Microsoft/Anthropic partnership)
+- **Microsoft.Extensions.Hosting v9.0.10**: Dependency injection and hosting infrastructure
 - **Microsoft.SqlServer.TransactSql.ScriptDom v170.128.0**: Official T-SQL parser
 - **Microsoft.Data.SqlClient v6.1.1**: SQL Server client
-- **System.Text.Json v9.0.9**: JSON serialization
+- **System.Text.Json v9.0.10**: JSON serialization
 - **.NET 8.0** target framework
 
 ## Security Considerations
