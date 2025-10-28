@@ -1,4 +1,4 @@
-# SQL MCP Server v3.0
+# SQL MCP Server v3.1
 
 MCP Server completo para SQL Server: validação, execução segura e documentação de T-SQL usando o parser oficial da Microsoft.
 
@@ -23,9 +23,46 @@ dotnet publish -c Release -o ./publish
 
 ## ⚙️ Configuração no Claude Desktop
 
-Adicione ao arquivo `claude_desktop_config.json`:
+Existem **duas formas** de configurar os bancos de dados: via **variáveis de ambiente** (recomendado) ou via **argumentos de linha de comando**.
 
-**Windows (Com múltiplos bancos de dados):**
+### Opção 1: Variáveis de Ambiente (Recomendado) ⭐
+
+Configure as variáveis de ambiente do sistema e use uma configuração simples no Claude Desktop:
+
+**Configuração das variáveis de ambiente (Windows):**
+
+Método A - JSON completo:
+```bash
+# PowerShell (Usuário atual)
+[Environment]::SetEnvironmentVariable("SQL_MCP_DATABASES", '{"qa":"Server=localhost;Database=QA;Integrated Security=true;","production":"Server=prod-server;Database=MyDB;User Id=user;Password=pass;"}', "User")
+[Environment]::SetEnvironmentVariable("SQL_MCP_DEFAULT_DATABASE", "qa", "User")
+```
+
+Método B - Variáveis individuais:
+```bash
+# PowerShell (Usuário atual)
+[Environment]::SetEnvironmentVariable("SQL_MCP_DB_QA", "Server=localhost;Database=QA;Integrated Security=true;", "User")
+[Environment]::SetEnvironmentVariable("SQL_MCP_DB_PRODUCTION", "Server=prod-server;Database=MyDB;User Id=user;Password=pass;", "User")
+[Environment]::SetEnvironmentVariable("SQL_MCP_DEFAULT_DATABASE", "qa", "User")
+```
+
+**Configuração no `claude_desktop_config.json`:**
+```json
+{
+  "mcpServers": {
+    "sql-mcp-server": {
+      "command": "dotnet",
+      "args": [
+        "C:\\Users\\Marccelo\\source\\repos\\SQL-Server\\Mcp\\publish\\SqlMcpServer.dll"
+      ]
+    }
+  }
+}
+```
+
+### Opção 2: Argumentos de Linha de Comando
+
+**Windows (Com múltiplos bancos de dados via args):**
 ```json
 {
   "mcpServers": {
@@ -43,10 +80,42 @@ Adicione ao arquivo `claude_desktop_config.json`:
 
 **Localização:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-### Parâmetros de Configuração
+### Variáveis de Ambiente Disponíveis
 
-- `--databases=<json>`: JSON com mapeamento de nome → connection string
+- **`SQL_MCP_DATABASES`**: JSON com mapeamento de nome → connection string
+  - Exemplo: `{"dev":"Server=localhost;Database=DB;...","prod":"Server=..."}`
+- **`SQL_MCP_DB_<NAME>`**: Connection string para um banco específico
+  - Exemplo: `SQL_MCP_DB_QA`, `SQL_MCP_DB_PRODUCTION`
+  - O nome do banco será convertido para lowercase
+- **`SQL_MCP_DEFAULT_DATABASE`**: Nome do banco padrão (opcional)
+
+### Parâmetros de Linha de Comando
+
+- `--databases=<json>`: JSON com mapeamento de nome → connection string (sobrescreve variáveis de ambiente)
 - `--default-database=<nome>`: Nome do banco padrão (opcional, usa o primeiro se não especificado)
+
+**Nota:** Argumentos de linha de comando têm prioridade sobre variáveis de ambiente.
+
+## 🔄 Retry Policy e Timeouts
+
+O servidor implementa políticas robustas de retry e timeout:
+
+### Retry Automático
+- **Erros transientes** são automaticamente retentados com **exponential backoff**
+- **Máximo de 3 tentativas** (total de 4 execuções)
+- **Delays**: 1s, 2s, 4s entre tentativas
+- **Erros que acionam retry**:
+  - Transport-level errors (conexão fechada pelo host remoto)
+  - Connection broken / timeout
+  - Network errors
+  - Azure SQL transient errors (40197, 40501, 40613)
+
+### Timeouts Configurados
+- **Connection Timeout**: 15 segundos (tempo para estabelecer conexão)
+- **Command Timeout**: 300 segundos / 5 minutos (tempo de execução da query)
+- **Validation Timeout**: 5 segundos (validação rápida com `SET PARSEONLY ON`)
+
+Erros não-transientes (sintaxe, permissões, etc.) **não são retentados**.
 
 ## 🛠️ Ferramentas Disponíveis
 
@@ -213,13 +282,23 @@ cd C:\Users\Marccelo\source\repos\SQL-Server\Mcp
 dotnet run
 ```
 
-## ✅ Mudanças da Versão Anterior (v2.0 → v3.0)
+## ✅ Mudanças da Versão Anterior
 
-### Removido
+### v3.0 → v3.1 (Atual)
+
+**Adicionado:**
+- ✅ **Retry Policy**: Retry automático com exponential backoff para erros transientes
+- ✅ **Timeouts Configuráveis**: Connection timeout (15s) separado do command timeout (300s)
+- ✅ **Variáveis de Ambiente**: Configuração via `SQL_MCP_DATABASES` e `SQL_MCP_DB_<NAME>`
+- ✅ **Logging Aprimorado**: Logs de retry e configuração carregada
+
+### v2.0 → v3.0
+
+**Removido:**
 - ❌ **format_sql**: Ferramenta de formatação SQL removida
 - ❌ **SqlFormatterService**: Serviço de formatação removido
 
-### Adicionado
+**Adicionado:**
 - ✅ **execute_sql**: Execução segura de queries SQL
 - ✅ **list_databases**: Listagem de bancos configurados
 - ✅ **SqlConnectionConfig**: Gerenciamento de múltiplas conexões

@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo ====  SQL MCP Server v3.0 - Build  ====
+echo ====  SQL MCP Server v3.1 - Build  ====
 echo ========================================
 echo.
 
@@ -53,35 +53,30 @@ echo ========================================
 echo.
 echo Aplicacao publicada em: %CD%\publish
 echo.
-echo FEATURES v3.0:
+echo FEATURES v3.1:
 echo   ✅ validate_sql   - Valida sintaxe T-SQL
 echo   ✅ parse_sql      - Analisa estrutura AST
 echo   ✅ document_sql   - Gera documentacao Markdown
 echo   ✨ execute_sql    - Executa queries com seguranca
 echo   ✨ list_databases - Lista bancos configurados
 echo.
+echo NOVIDADES v3.1:
+echo   🔄 Retry automatico com exponential backoff
+echo   ⏱️  Timeouts separados (conexao: 15s, execucao: 300s)
+echo   🌍 Configuracao via variaveis de ambiente
+echo.
 echo SEGURANCA:
 echo   🔒 Bloqueia: DROP, DELETE, UPDATE, TRUNCATE, ALTER
 echo   ✅ Permite: SELECT, INSERT, CREATE
 echo.
-echo Para configurar no Claude Desktop:
+echo ========================================
+echo PROXIMOS PASSOS:
+echo ========================================
 echo.
-echo 1. Abra: %%APPDATA%%\Claude\claude_desktop_config.json
+echo Execute o script de configuracao:
+echo   .\Scripts\setup-env.bat
 echo.
-echo 2. Adicione:
-echo {
-echo   "mcpServers": {
-echo     "sql-mcp-server": {
-echo       "command": "%CD%\\publish\\SqlMcpServer.exe",
-echo       "args": [
-echo         "--databases={\"dev\":\"Server=localhost;Database=MyDB;Integrated Security=true;TrustServerCertificate=True\"}",
-echo         "--default-database=dev"
-echo       ]
-echo     }
-echo   }
-echo }
-echo.
-echo 3. Reinicie o Claude Desktop
+echo Ou configure manualmente - veja: README.md secao "Configuracao"
 echo.
 echo ========================================
 pause

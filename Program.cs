@@ -114,7 +114,7 @@ public class SqlMcpServer
             result = new
             {
                 protocolVersion = "2024-11-05",
-                serverInfo = new { name = "sql-mcp-server", version = "3.0.0" },
+                serverInfo = new { name = "sql-mcp-server", version = "3.1.0" },
                 capabilities = new { tools = new { } }
             }
         };
@@ -199,7 +199,7 @@ public class SqlMcpServer
                     new
                     {
                         name = "execute_sql",
-                        description = "Executes SQL queries with automatic syntax validation and security checks. Blocked: DROP, DELETE, UPDATE, TRUNCATE, ALTER. Allowed: SELECT, INSERT, CREATE. ⚡ Validation is automatic - no need to call validate_sql first.",
+                        description = "Executes SQL queries with automatic syntax validation and security checks. Blocked: DROP, DELETE, UPDATE, TRUNCATE, ALTER. Allowed: SELECT, INSERT, CREATE. ⚡ Validation is automatic - no need to call validate_sql first. IMPORTANT: If the query fails with an error (invalid column, syntax error, etc.), you MUST analyze the error message, fix the query, and retry automatically. Error messages include specific guidance on how to fix the issue.",
                         inputSchema = new
                         {
                             type = "object",
@@ -556,6 +556,15 @@ public class SqlMcpServer
         var output = new System.Text.StringBuilder();
         output.AppendLine($"✓ Query executed successfully on database: {result.DatabaseUsed}");
         output.AppendLine($"Rows returned: {result.RowsAffected}");
+
+        // Exibe aviso se a query foi auto-corrigida
+        if (result.WasAutoFixed && !string.IsNullOrEmpty(result.OriginalQuery))
+        {
+            output.AppendLine();
+            output.AppendLine("🔧 AUTO-FIX APPLIED:");
+            output.AppendLine("   Reserved keywords were automatically enclosed in square brackets.");
+            output.AppendLine($"   Original: {result.OriginalQuery.Substring(0, Math.Min(150, result.OriginalQuery.Length))}...");
+        }
 
         // Exibe mensagens informativas se houver (PRINT, STATISTICS IO, etc)
         if (result.InfoMessages.Count > 0)
